@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+location        = "eastus2"
+prefix          = "sentingest"
+
+# Azure Firewall costs roughly $900/month for existence alone, so forced tunneling is off
+# by default. Enable both of these together in production. See docs/cost-notes.md.
+enable_forced_tunneling = false
+# firewall_private_ip   = "10.60.2.4"
+
+eventhub_partition_count = 4
+eventhub_capture_enabled = true
+log_retention_days       = 90
+
+tags = {
+  workload = "sentinel-ingestion"
+  exposure = "private-only"
+  owner    = "security-engineering"
+}

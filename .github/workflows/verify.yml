@@ -1,0 +1,86 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: terraform validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: format check
+        run: terraform fmt -check -recursive
+
+      # -backend=false initialises providers without contacting Azure, so validation
+      # runs with no subscription and no credentials.
+      - name: init
+        run: terraform init -backend=false
+        working-directory: terraform
+
+      - name: validate
+        run: terraform validate
+        working-directory: terraform
+
+  lint:
+    name: tflint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - run: tflint --init
+        working-directory: terraform
+
+      - run: tflint --recursive --format compact
+        working-directory: terraform
+
+  policy:
+    name: security policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install checkov
+        run: pip install --disable-pip-version-check checkov
+
+      # The custom checks in policy/checkov are the substantive assertion here: they encode
+      # the controls this architecture claims, so a regression fails the build.
+      - name: run checkov
+        run: |
+          checkov \
+            --directory terraform \
+            --external-checks-dir policy/checkov \
+            --framework terraform \
+            --quiet \
+            --compact
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

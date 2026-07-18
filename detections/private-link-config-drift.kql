@@ -1,0 +1,59 @@
+// Name:      Private-only boundary reopened on ingestion resources
+// Severity:  High
+// Tactics:   DefenseEvasion, Exfiltration
+// Technique: T1562.001 (Impair Defenses: Disable or Modify Tools)
+// Cadence:   Run every 15m, look back 15m
+//
+// The single most consequential change anyone can make to this architecture is flipping a
+// resource back to public. It is a one-line ARM write, it produces no data-plane signal,
+// and every downstream control still reports healthy afterwards. This rule treats that
+// write as the alert.
+//
+// Tuning: scope ResourceGroup to the ingestion RG. Legitimate changes should arrive through
+// the pipeline identity, so add that principal to the allowlist below rather than widening
+// the match.
+let AllowedPrincipals = dynamic([]);  // add the CI deployment principal object ID
+let MonitoredTypes = dynamic([
+    "MICROSOFT.EVENTHUB/NAMESPACES",
+    "MICROSOFT.STORAGE/STORAGEACCOUNTS",
+    "MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES",
+    "MICROSOFT.INSIGHTS/DATACOLLECTIONENDPOINTS",
+    "MICROSOFT.INSIGHTS/PRIVATELINKSCOPES",
+    "MICROSOFT.WEB/SITES"
+]);
+AzureActivity
+| where TimeGenerated > ago(15m)
+| where OperationNameValue has_any ("WRITE", "DELETE")
+| where ActivityStatusValue == "Success"
+| extend ResourceType = toupper(tostring(split(_ResourceId, "/")[6] + "/" + split(_ResourceId, "/")[7]))
+| where ResourceType in (MonitoredTypes)
+| extend Props = parse_json(tostring(parse_json(Properties).requestbody)).properties
+| extend
+    PublicAccess       = tostring(Props.publicNetworkAccess),
+    LocalAuthDisabled  = tostring(Props.disableLocalAuth),
+    SharedKeyEnabled   = tostring(Props.allowSharedKeyAccess),
+    IngestionAccess    = tostring(Props.accessModeSettings.ingestionAccessMode),
+    InternetIngestion  = tostring(Props.publicNetworkAccessForIngestion)
+| where PublicAccess =~ "Enabled"
+    or LocalAuthDisabled =~ "false"
+    or SharedKeyEnabled =~ "true"
+    or IngestionAccess =~ "Open"
+    or InternetIngestion =~ "Enabled"
+| where Caller !in (AllowedPrincipals)
+| project
+    TimeGenerated,
+    Caller,
+    CallerIpAddress,
+    OperationNameValue,
+    _ResourceId,
+    ResourceType,
+    PublicAccess,
+    LocalAuthDisabled,
+    SharedKeyEnabled,
+    IngestionAccess,
+    InternetIngestion,
+    CorrelationId
+| extend
+    AccountCustomEntity  = Caller,
+    IPCustomEntity       = CallerIpAddress,
+    AzureResourceEntity  = _ResourceId

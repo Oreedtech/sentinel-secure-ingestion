@@ -1,0 +1,44 @@
+// Name:      SAS authentication attempted against key-disabled Event Hubs namespace
+// Severity:  Medium
+// Tactics:   CredentialAccess, InitialAccess
+// Technique: T1078.004 (Valid Accounts: Cloud Accounts)
+// Cadence:   Run every 1h, look back 1h
+//
+// Local authentication is disabled on the namespace, so a SAS attempt cannot succeed. That
+// is precisely what makes it useful signal: nothing in the legitimate pipeline ever tries.
+// A sustained pattern means either a stale client still holding a revoked key, or someone
+// probing with a credential they should not have.
+//
+// Depends on the RuntimeAuditLogs diagnostic category, enabled in terraform/eventhub.tf.
+let LookbackWindow = 1h;
+let FailureThreshold = 5;
+AZMSRuntimeAuditLogs
+| where TimeGenerated > ago(LookbackWindow)
+| where Provider =~ "EventHub"
+| where AuthType =~ "SAS" or AuthKey has "SharedAccessSignature"
+| where ActivityName has_any ("Send", "Receive", "Connect", "Authorization")
+| summarize
+    AttemptCount      = count(),
+    FailedCount       = countif(Status !~ "Success"),
+    DistinctIPs       = dcount(ClientIp),
+    IPList            = make_set(ClientIp, 20),
+    ActivityList      = make_set(ActivityName, 10),
+    FirstAttempt      = min(TimeGenerated),
+    LastAttempt       = max(TimeGenerated)
+    by NamespaceName = tostring(split(_ResourceId, "/")[-1]), ClientIp
+| where AttemptCount >= FailureThreshold
+| extend
+    Rationale = strcat(
+        "Namespace has local auth disabled; ", AttemptCount,
+        " SAS-based attempts observed from ", ClientIp
+    )
+| project
+    FirstAttempt,
+    LastAttempt,
+    NamespaceName,
+    ClientIp,
+    AttemptCount,
+    FailedCount,
+    ActivityList,
+    Rationale
+| extend IPCustomEntity = ClientIp

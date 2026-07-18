@@ -1,0 +1,57 @@
+// Name:      Ingestion pipeline stalled or silently degraded
+// Severity:  Medium
+// Tactics:   DefenseEvasion
+// Technique: T1562.008 (Impair Defenses: Disable or Modify Cloud Logs)
+// Cadence:   Run every 30m, look back 4h
+//
+// A private-only pipeline fails closed, which means an outage looks identical to "nothing
+// happened" -- no errors reach the workspace because nothing reaches the workspace at all.
+// Silence is therefore the detection surface. This compares current volume against the
+// source's own recent baseline rather than a fixed threshold, so a low-volume source does
+// not alert continuously.
+//
+// Suppressing this rule during planned maintenance is expected; deleting it is not.
+let BaselineWindow = 7d;
+let EvaluationWindow = 1h;
+let MinimumBaselineEvents = 20;
+let DropRatioThreshold = 0.2;
+let Baseline =
+    SecureIngest_CL
+    | where TimeGenerated between (ago(BaselineWindow) .. ago(EvaluationWindow))
+    | summarize HourlyCounts = count() by SourceSystem, bin(TimeGenerated, 1h)
+    | summarize
+        MedianHourly = percentile(HourlyCounts, 50),
+        SampleHours  = count()
+        by SourceSystem
+    | where MedianHourly >= MinimumBaselineEvents and SampleHours >= 24;
+let Current =
+    SecureIngest_CL
+    | where TimeGenerated > ago(EvaluationWindow)
+    | summarize CurrentCount = count(), LastSeen = max(TimeGenerated) by SourceSystem;
+Baseline
+| join kind=leftouter Current on SourceSystem
+| extend
+    CurrentCount = coalesce(CurrentCount, 0),
+    LastSeen     = coalesce(LastSeen, datetime(null))
+| extend DropRatio = todouble(CurrentCount) / todouble(MedianHourly)
+| where DropRatio < DropRatioThreshold
+| extend
+    Severity = case(
+        CurrentCount == 0, "High",
+        DropRatio < 0.1,   "Medium",
+                           "Low"
+    ),
+    Rationale = strcat(
+        SourceSystem, " delivered ", CurrentCount,
+        " events in the last hour against a 7-day median of ", MedianHourly,
+        " (", round(DropRatio * 100, 1), "% of baseline)"
+    )
+| project
+    SourceSystem,
+    CurrentCount,
+    MedianHourly,
+    DropRatio,
+    LastSeen,
+    Severity,
+    Rationale
+| sort by DropRatio asc
