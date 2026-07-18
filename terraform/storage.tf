@@ -2,6 +2,9 @@
 # public in otherwise-private designs -- an unlocked storage account here reopens the
 # boundary regardless of how tightly the rest of the pipeline is closed.
 resource "azurerm_storage_account" "function" {
+  # checkov:skip=CKV_AZURE_36:Deliberately stricter than the check. It wants bypass to include AzureServices; this account is reached only over private endpoints from the integrated subnet, so a service bypass would widen the network posture for no functional gain.
+  # checkov:skip=CKV_AZURE_206:ZRS is intentional over GRS. Cross-region replication of security telemetry is a data-residency decision, not a default; zone redundancy already covers the failure mode this account faces.
+  # checkov:skip=CKV2_AZURE_1:Platform-managed keys. CMK with a private-endpoint Key Vault is recorded as gap 2 in docs/threat-model.md rather than silently omitted.
   name                = "st${var.prefix}fn${local.suffix}"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
@@ -26,10 +29,29 @@ resource "azurerm_storage_account" "function" {
     delete_retention_policy {
       days = 7
     }
+
+    container_delete_retention_policy {
+      days = 7
+    }
+  }
+
+  # The function host uses queues for its own state. Logging read/write/delete gives an
+  # audit trail for that state independent of the pipeline it is running.
+  queue_properties {
+    logging {
+      delete                = true
+      read                  = true
+      write                 = true
+      version               = "1.0"
+      retention_policy_days = 10
+    }
   }
 }
 
 resource "azurerm_storage_account" "capture" {
+  # checkov:skip=CKV_AZURE_206:ZRS is intentional over GRS. This account holds raw security events; replicating them to a paired region is a data-residency decision that belongs to the deploying org, not a module default.
+  # checkov:skip=CKV_AZURE_33:No queues exist on this account. Capture writes blobs only, so queue logging would monitor a surface that is never used.
+  # checkov:skip=CKV2_AZURE_1:Platform-managed keys. See gap 2 in docs/threat-model.md.
   name                = "st${var.prefix}cap${local.suffix}"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
@@ -51,6 +73,19 @@ resource "azurerm_storage_account" "capture" {
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices"]
+  }
+
+  # Soft delete on the archive matters more than on the function's state store: this is the
+  # replay path, so an accidental delete here is the difference between a recoverable
+  # incident and permanent loss of the raw events.
+  blob_properties {
+    delete_retention_policy {
+      days = 30
+    }
+
+    container_delete_retention_policy {
+      days = 30
+    }
   }
 }
 

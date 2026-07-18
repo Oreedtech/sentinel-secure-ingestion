@@ -33,6 +33,25 @@ DNS zone group deploys cleanly and reports healthy, but the hostname still resol
 public IP — so traffic either leaves the VNet or gets dropped by the firewall and presents
 as an unrelated network fault. It is the most common way this architecture is built wrong.
 
+### Policy exceptions
+
+Checkov's built-in Azure ruleset also runs. Where a finding is right, it is fixed. Where it
+conflicts with a deliberate decision, it is suppressed inline with a written reason rather
+than by loosening the scan:
+
+```bash
+grep -rn "checkov:skip" terraform/
+```
+
+Two are worth calling out. `CKV_AZURE_36` wants the `AzureServices` bypass on the function's
+storage account — this design refuses it, because the account is reached only over private
+endpoints and the bypass would widen its network posture for no functional gain. That is a
+case of the code being *stricter* than the check. `CKV2_AZURE_1` wants customer-managed
+keys, which this genuinely does not implement; it is suppressed pointing at gap 2 of the
+[threat model](docs/threat-model.md) rather than quietly passed.
+
+An exception with a reason attached is a decision. One without is a gap.
+
 ## Verifying it
 
 No Azure subscription or credentials required. `terraform init -backend=false` resolves

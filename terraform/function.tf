@@ -1,4 +1,6 @@
 resource "azurerm_service_plan" "this" {
+  # checkov:skip=CKV_AZURE_225:Zone balancing requires a minimum of three instances. Enabling it triples the plan's cost, which puts the module out of reach of a trial subscription. Production deployments should set zone_balancing_enabled and worker_count >= 3; see docs/cost-notes.md.
+  # checkov:skip=CKV_AZURE_212:Same tradeoff as CKV_AZURE_225. A single instance is a documented availability limitation of the lab default, not an oversight.
   name                = "asp-${var.prefix}-${local.suffix}"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
@@ -56,7 +58,7 @@ resource "azurerm_linux_function_app" "this" {
     "DCR_IMMUTABLE_ID"            = azurerm_monitor_data_collection_rule.this.immutable_id
     "DCR_STREAM_NAME"             = "Custom-${local.custom_table_name}"
 
-    "WEBSITE_CONTENTOVERVNET" = "1"
+    "WEBSITE_CONTENTOVERVNET"  = "1"
     "FUNCTIONS_WORKER_RUNTIME" = "python"
   }
 
