@@ -62,8 +62,11 @@ resource "azurerm_monitor_data_collection_rule" "this" {
   location                    = azurerm_resource_group.this.location
   resource_group_name         = azurerm_resource_group.this.name
   data_collection_endpoint_id = azurerm_monitor_data_collection_endpoint.this.id
-  kind                        = "Direct"
   tags                        = var.tags
+
+  # kind is deliberately unset. The azurerm provider only accepts the agent-oriented kinds
+  # (Linux, Windows, AgentDirectToStore, WorkspaceTransforms); a direct-ingestion DCR is
+  # expressed by pairing stream_declaration with a data collection endpoint instead.
 
   stream_declaration {
     stream_name = "Custom-${local.custom_table_name}"

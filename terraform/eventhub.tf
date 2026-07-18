@@ -90,7 +90,28 @@ resource "azurerm_monitor_diagnostic_setting" "eventhub" {
     category = "RuntimeAuditLogs"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
+  }
+}
+
+# Reads of the raw event archive are themselves security-relevant: this container holds
+# unfiltered source events, so knowing who retrieved them matters as much as knowing who
+# wrote them. Also satisfies CKV2_AZURE_21.
+resource "azurerm_monitor_diagnostic_setting" "capture_blob" {
+  name                       = "diag-capture-blob"
+  target_resource_id         = "${azurerm_storage_account.capture.id}/blobServices/default"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
+
+  enabled_log {
+    category = "StorageRead"
+  }
+
+  enabled_log {
+    category = "StorageWrite"
+  }
+
+  enabled_log {
+    category = "StorageDelete"
   }
 }
