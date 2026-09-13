@@ -1,6 +1,6 @@
 # Secure Sentinel ingestion
 
-[![verify](https://github.com/Oshun2/sentinel-secure-ingestion/actions/workflows/verify.yml/badge.svg)](https://github.com/Oshun2/sentinel-secure-ingestion/actions/workflows/verify.yml)
+[![verify](https://github.com/Oreedtech/sentinel-secure-ingestion/actions/workflows/verify.yml/badge.svg)](https://github.com/Oreedtech/sentinel-secure-ingestion/actions/workflows/verify.yml)
 
 A private-only log ingestion pipeline for Microsoft Sentinel, built with Terraform and
 verified in CI.
