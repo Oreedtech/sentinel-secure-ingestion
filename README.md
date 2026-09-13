@@ -50,6 +50,16 @@ case of the code being *stricter* than the check. `CKV2_AZURE_1` wants customer-
 keys, which this genuinely does not implement; it is suppressed pointing at gap 2 of the
 [threat model](docs/threat-model.md) rather than quietly passed.
 
+`CKV2_AZURE_21` is the sharpest version of the first case. It asks that blob read requests be
+logged, and accepts only one implementation: an `azurerm_log_analytics_storage_insights`
+resource, whose `storage_account_key` argument the provider marks *required*. This account
+sets `shared_access_key_enabled = false`, and `CKV_OREED_4` fails the build if that ever
+changes. Reads *are* audited — `azurerm_monitor_diagnostic_setting.capture_blob` streams
+`StorageRead`, `StorageWrite` and `StorageDelete` to Log Analytics with no credential
+involved. Passing the check literally would mean reintroducing an account key in order to
+log the reads of an account whose reads are already logged. The check encodes an
+implementation; the control it stands for is met by a stronger one.
+
 An exception with a reason attached is a decision. One without is a gap.
 
 ## Verifying it

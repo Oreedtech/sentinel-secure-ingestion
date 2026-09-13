@@ -90,6 +90,7 @@ resource "azurerm_storage_account" "capture" {
 }
 
 resource "azurerm_storage_container" "capture" {
+  # checkov:skip=CKV2_AZURE_21:Deliberately stricter than the check. It is satisfied only by azurerm_log_analytics_storage_insights, whose storage_account_key argument is required by the provider -- but this account sets shared_access_key_enabled = false, which CKV_OREED_4 enforces. Blob read auditing is implemented on the keyless path instead: azurerm_monitor_diagnostic_setting.capture_blob streams StorageRead, StorageWrite and StorageDelete to Log Analytics. Passing this check literally would mean reintroducing an account key in order to log reads that are already logged.
   name                  = "raw-events"
   storage_account_id    = azurerm_storage_account.capture.id
   container_access_type = "private"
